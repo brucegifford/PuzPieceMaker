@@ -54,6 +54,7 @@ class ImageGridWidget(QLabel):
         self.zoom_factor = 1.0
         self.crop_mode = False
         self.drag_handles = []
+        self.padding = 10  # Add 10 pixel padding around the image
         self.setAlignment(Qt.AlignCenter)
         self.setStyleSheet("border: 1px solid gray;")
         self.setMinimumSize(400, 300)
@@ -84,10 +85,34 @@ class ImageGridWidget(QLabel):
 
         # Draw grid on the scaled pixmap
         gridded_pixmap = self.draw_grid(scaled_pixmap)
-        self.setPixmap(gridded_pixmap)
-        
-        # Adjust widget size to match the pixmap
-        self.resize(gridded_pixmap.size())
+
+        # Create a larger pixmap with padding
+        padded_size = QSize(gridded_pixmap.width() + 2 * self.padding,
+                           gridded_pixmap.height() + 2 * self.padding)
+        padded_pixmap = QPixmap(padded_size)
+        padded_pixmap.fill(Qt.lightGray)  # Fill padding area with light gray
+
+        # Draw the image centered in the padded pixmap
+        painter = QPainter(padded_pixmap)
+        painter.drawPixmap(self.padding, self.padding, gridded_pixmap)
+        painter.end()
+
+        self.setPixmap(padded_pixmap)
+
+        # Adjust widget size to match the padded pixmap
+        self.resize(padded_pixmap.size())
+
+    def get_image_rect(self):
+        """Get the rectangle where the actual image is drawn (excluding padding)"""
+        if not self.original_pixmap:
+            return QRect()
+
+        # Calculate the scaled image size
+        original_size = self.original_pixmap.size()
+        zoomed_size = original_size * self.zoom_factor
+
+        # Return the rectangle where the image is positioned (with padding offset)
+        return QRect(self.padding, self.padding, zoomed_size.width(), zoomed_size.height())
 
     def draw_grid(self, pixmap):
         # Create a copy to draw on
@@ -138,20 +163,25 @@ class ImageGridWidget(QLabel):
         if not self.original_pixmap or self.grid_x == 0 or self.grid_y == 0:
             return
 
-        # Get current image dimensions
-        current_pixmap = self.pixmap()
-        if not current_pixmap:
+        # Get the actual image rectangle (excluding padding)
+        image_rect = self.get_image_rect()
+        if image_rect.isNull():
             return
 
-        width = current_pixmap.width()
-        height = current_pixmap.height()
+        # Get image dimensions and position
+        left = image_rect.left()
+        top = image_rect.top()
+        right = image_rect.right()
+        bottom = image_rect.bottom()
+        center_x = left + image_rect.width() // 2
+        center_y = top + image_rect.height() // 2
 
-        # Corner handles (4 corners of the grid)
+        # Corner handles (4 corners of the image)
         corners = [
-            (0, 0),  # Top-left
-            (width, 0),  # Top-right
-            (0, height),  # Bottom-left
-            (width, height)  # Bottom-right
+            (left, top),      # Top-left
+            (right, top),     # Top-right
+            (left, bottom),   # Bottom-left
+            (right, bottom)   # Bottom-right
         ]
 
         for x, y in corners:
@@ -159,16 +189,16 @@ class ImageGridWidget(QLabel):
 
         # Single midpoint handle on each outside edge
         # Top edge center
-        self.drag_handles.append({'pos': QPoint(width // 2, 0), 'type': 'edge'})
+        self.drag_handles.append({'pos': QPoint(center_x, top), 'type': 'edge'})
 
         # Bottom edge center
-        self.drag_handles.append({'pos': QPoint(width // 2, height), 'type': 'edge'})
+        self.drag_handles.append({'pos': QPoint(center_x, bottom), 'type': 'edge'})
 
         # Left edge center
-        self.drag_handles.append({'pos': QPoint(0, height // 2), 'type': 'edge'})
+        self.drag_handles.append({'pos': QPoint(left, center_y), 'type': 'edge'})
 
         # Right edge center
-        self.drag_handles.append({'pos': QPoint(width, height // 2), 'type': 'edge'})
+        self.drag_handles.append({'pos': QPoint(right, center_y), 'type': 'edge'})
 
     def paintEvent(self, event):
         super().paintEvent(event)
