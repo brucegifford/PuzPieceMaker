@@ -65,13 +65,12 @@ class ImageGridWidget(QLabel):
         self.grid_x = grid_x
         self.grid_y = grid_y
         self.zoom_factor = 1.0  # Reset zoom when new image is loaded
+        self.calculate_grid_points()  # Calculate grid points BEFORE update_display
         self.update_display()
-        self.calculate_grid_points()  # Calculate grid points when setting image and grid
 
     def set_zoom(self, zoom_factor):
         self.zoom_factor = zoom_factor
-        self.update_display()
-        self.calculate_grid_points()  # Recalculate grid points when zoom changes
+        self.update_display()  # Grid points don't need recalculating for zoom changes
 
     def update_display(self):
         if not self.original_pixmap:
@@ -129,19 +128,45 @@ class ImageGridWidget(QLabel):
         width = result_pixmap.width()
         height = result_pixmap.height()
 
-        # Calculate grid spacing
-        x_spacing = width / self.grid_x
-        y_spacing = height / self.grid_y
+        # Only draw grid if we have grid points
+        if not self.grid_points or self.grid_x == 0 or self.grid_y == 0:
+            painter.end()
+            return result_pixmap
 
-        # Draw vertical lines (including left and right borders)
-        for i in range(self.grid_x + 1):
-            x = int(i * x_spacing)
-            painter.drawLine(x, 0, x, height)
+        # Calculate scaling factor from original image to current pixmap
+        original_size = self.original_pixmap.size()
+        scale_x = width / original_size.width()
+        scale_y = height / original_size.height()
 
-        # Draw horizontal lines (including top and bottom borders)
-        for i in range(self.grid_y + 1):
-            y = int(i * y_spacing)
-            painter.drawLine(0, y, width, y)
+        # Draw vertical line segments using grid points
+        for col in range(self.grid_x + 1):
+            # Draw segments between consecutive points in this column
+            for row in range(self.grid_y):
+                # Get start point (current row)
+                start_x = int(self.grid_points[row][col][0] * scale_x)
+                start_y = int(self.grid_points[row][col][1] * scale_y)
+
+                # Get end point (next row)
+                end_x = int(self.grid_points[row + 1][col][0] * scale_x)
+                end_y = int(self.grid_points[row + 1][col][1] * scale_y)
+
+                # Draw line segment between these two points
+                painter.drawLine(start_x, start_y, end_x, end_y)
+
+        # Draw horizontal line segments using grid points
+        for row in range(self.grid_y + 1):
+            # Draw segments between consecutive points in this row
+            for col in range(self.grid_x):
+                # Get start point (current column)
+                start_x = int(self.grid_points[row][col][0] * scale_x)
+                start_y = int(self.grid_points[row][col][1] * scale_y)
+
+                # Get end point (next column)
+                end_x = int(self.grid_points[row][col + 1][0] * scale_x)
+                end_y = int(self.grid_points[row][col + 1][1] * scale_y)
+
+                # Draw line segment between these two points
+                painter.drawLine(start_x, start_y, end_x, end_y)
 
         painter.end()
         return result_pixmap
@@ -292,6 +317,14 @@ class ImageGridWidget(QLabel):
         if self.grid_points:
             print(f"Top-left corner: {self.grid_points[0][0]}")
             print(f"Bottom-right corner: {self.grid_points[-1][-1]}")
+
+    def set_grid_points(self, grid_points):
+        """Set the grid points directly from loaded data"""
+        self.grid_points = grid_points if grid_points else []
+        print(f"Grid points loaded: {len(self.grid_points)} rows x {len(self.grid_points[0]) if self.grid_points else 0} cols")
+        if self.grid_points:
+            print(f"Loaded top-left corner: {self.grid_points[0][0]}")
+            print(f"Loaded bottom-right corner: {self.grid_points[-1][-1]}")
 
     def get_grid_point(self, row, col):
         """Get the coordinates of a specific grid point in original image dimensions"""
@@ -540,17 +573,10 @@ class PuzzleGridViewer(QMainWindow):
             self.zoom_slider.setValue(100)
             self.zoom_label.setText("100%")
 
-    def save_document(self):
+    def _save_document_to_file(self, file_path):
+        """Helper function to save document data to a specified file path"""
         if not self.current_image_path:
-            return
-
-        # If we have a current document path, save to it directly
-        if self.current_document_path:
-            file_path = self.current_document_path
-        else:
-            # No current document path, so act like "Save As..."
-            self.save_document_as()
-            return
+            return False
 
         # Create the document data with all required information
         # Convert backslashes to forward slashes for cross-platform compatibility
@@ -564,6 +590,7 @@ class PuzzleGridViewer(QMainWindow):
             "grid_y": self.image_widget.grid_y,
             "image_path": normalized_image_path,
             "zoom_value": self.image_widget.zoom_factor,
+            "grid_points": self.image_widget.grid_points,  # Save grid points array
             "window_width": geometry.width(),
             "window_height": geometry.height(),
             "window_x": geometry.x(),
@@ -581,12 +608,25 @@ class PuzzleGridViewer(QMainWindow):
                 f"Grid: {document_data['grid_x']}x{document_data['grid_y']}\n"
                 f"Zoom: {int(document_data['zoom_value'] * 100)}%"
             )
+            return True
         except Exception as e:
             QMessageBox.critical(
                 self,
                 "Save Error",
                 f"Failed to save document:\n{str(e)}"
             )
+            return False
+
+    def save_document(self):
+        if not self.current_image_path:
+            return
+
+        # If we have a current document path, save to it directly
+        if self.current_document_path:
+            self._save_document_to_file(self.current_document_path)
+        else:
+            # No current document path, so act like "Save As..."
+            self.save_document_as()
 
     def save_document_as(self):
         if not self.current_image_path:
@@ -608,45 +648,11 @@ class PuzzleGridViewer(QMainWindow):
         )
 
         if file_path:
-            # Create the document data with all required information
-            # Convert backslashes to forward slashes for cross-platform compatibility
-            normalized_image_path = self.current_image_path.replace('\\', '/')
-
-            # Get current window geometry
-            geometry = self.geometry()
-
-            document_data = {
-                "grid_x": self.image_widget.grid_x,
-                "grid_y": self.image_widget.grid_y,
-                "image_path": normalized_image_path,
-                "zoom_value": self.image_widget.zoom_factor,
-                "window_width": geometry.width(),
-                "window_height": geometry.height(),
-                "window_x": geometry.x(),
-                "window_y": geometry.y()
-            }
-
-            try:
-                with open(file_path, "w") as json_file:
-                    json.dump(document_data, json_file, indent=2)
-
-                QMessageBox.information(
-                    self,
-                    "Document Saved",
-                    f"Document saved successfully to:\n{file_path}\n\n"
-                    f"Grid: {document_data['grid_x']}x{document_data['grid_y']}\n"
-                    f"Zoom: {int(document_data['zoom_value'] * 100)}%"
-                )
-
-                # Update current document path
+            # Use the shared save function
+            if self._save_document_to_file(file_path):
+                # Update current document path only if save was successful
                 self.current_document_path = file_path
 
-            except Exception as e:
-                QMessageBox.critical(
-                    self,
-                    "Save Error",
-                    f"Failed to save document:\n{str(e)}"
-                )
 
     def load_document_from_path(self, file_path):
         """Load a document from a given file path"""
@@ -659,6 +665,7 @@ class PuzzleGridViewer(QMainWindow):
             grid_y = document_data.get("grid_y")
             image_path = document_data.get("image_path")
             zoom_value = document_data.get("zoom_value", 1.0)
+            saved_grid_points = document_data.get("grid_points")  # Load saved grid points
 
             # Get window dimensions (with fallbacks for older documents)
             window_width = document_data.get("window_width")
@@ -687,7 +694,22 @@ class PuzzleGridViewer(QMainWindow):
                 QMessageBox.warning(self, "Error", f"Could not load the image from the document:\n{image_path}")
                 return False
 
-            self.image_widget.set_image_and_grid(pixmap, grid_x, grid_y)
+            # Set up the image widget
+            self.image_widget.original_pixmap = pixmap
+            self.image_widget.grid_x = grid_x
+            self.image_widget.grid_y = grid_y
+
+            # Load saved grid points if available, otherwise calculate them
+            if saved_grid_points:
+                self.image_widget.set_grid_points(saved_grid_points)
+                print("Using saved grid points from document")
+            else:
+                self.image_widget.calculate_grid_points()
+                print("No saved grid points found, calculated new ones")
+
+            # Set zoom and update display
+            self.image_widget.zoom_factor = 1.0  # Reset to default first
+            self.image_widget.update_display()
             self.image_widget.set_zoom(zoom_value)
 
             # Update zoom controls to match loaded zoom
