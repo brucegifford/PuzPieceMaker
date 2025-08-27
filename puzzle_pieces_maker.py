@@ -146,10 +146,6 @@ class ImageGridWidget(QLabel):
         width = current_pixmap.width()
         height = current_pixmap.height()
 
-        # Calculate grid spacing
-        x_spacing = width / self.grid_x
-        y_spacing = height / self.grid_y
-
         # Corner handles (4 corners of the grid)
         corners = [
             (0, 0),  # Top-left
@@ -161,26 +157,18 @@ class ImageGridWidget(QLabel):
         for x, y in corners:
             self.drag_handles.append({'pos': QPoint(int(x), int(y)), 'type': 'corner'})
 
-        # Midpoint handles on outside edges
-        # Top edge midpoints
-        for i in range(1, self.grid_x):
-            x = int(i * x_spacing)
-            self.drag_handles.append({'pos': QPoint(x, 0), 'type': 'edge'})
+        # Single midpoint handle on each outside edge
+        # Top edge center
+        self.drag_handles.append({'pos': QPoint(width // 2, 0), 'type': 'edge'})
 
-        # Bottom edge midpoints
-        for i in range(1, self.grid_x):
-            x = int(i * x_spacing)
-            self.drag_handles.append({'pos': QPoint(x, height), 'type': 'edge'})
+        # Bottom edge center
+        self.drag_handles.append({'pos': QPoint(width // 2, height), 'type': 'edge'})
 
-        # Left edge midpoints
-        for i in range(1, self.grid_y):
-            y = int(i * y_spacing)
-            self.drag_handles.append({'pos': QPoint(0, y), 'type': 'edge'})
+        # Left edge center
+        self.drag_handles.append({'pos': QPoint(0, height // 2), 'type': 'edge'})
 
-        # Right edge midpoints
-        for i in range(1, self.grid_y):
-            y = int(i * y_spacing)
-            self.drag_handles.append({'pos': QPoint(width, y), 'type': 'edge'})
+        # Right edge center
+        self.drag_handles.append({'pos': QPoint(width, height // 2), 'type': 'edge'})
 
     def paintEvent(self, event):
         super().paintEvent(event)
