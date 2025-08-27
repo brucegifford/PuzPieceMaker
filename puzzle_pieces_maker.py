@@ -4,13 +4,13 @@ import json
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout,
                             QWidget, QPushButton, QFileDialog, QLabel, QSpinBox,
                             QDialog, QDialogButtonBox, QFormLayout, QMessageBox,
-                            QScrollArea, QSlider)
-from PyQt5.QtGui import QPixmap, QPainter, QPen
-from PyQt5.QtCore import Qt
+                            QScrollArea, QSlider, QFrame)
+from PyQt5.QtGui import QPixmap, QPainter, QPen, QBrush
+from PyQt5.QtCore import Qt, QRect, QPoint, QSize
 
 
 class GridDimensionsDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, current_x=10, current_y=10):
         super().__init__(parent)
         self.setWindowTitle("Grid Dimensions")
         self.setModal(True)
@@ -21,12 +21,12 @@ class GridDimensionsDialog(QDialog):
         self.x_spinbox = QSpinBox()
         self.x_spinbox.setMinimum(1)
         self.x_spinbox.setMaximum(100)
-        self.x_spinbox.setValue(10)
+        self.x_spinbox.setValue(current_x)
 
         self.y_spinbox = QSpinBox()
         self.y_spinbox.setMinimum(1)
         self.y_spinbox.setMaximum(100)
-        self.y_spinbox.setValue(10)
+        self.y_spinbox.setValue(current_y)
 
         layout.addRow("X Squares (Width):", self.x_spinbox)
         layout.addRow("Y Squares (Height):", self.y_spinbox)
@@ -52,6 +52,8 @@ class ImageGridWidget(QLabel):
         self.grid_x = 0
         self.grid_y = 0
         self.zoom_factor = 1.0
+        self.crop_mode = False
+        self.drag_handles = []
         self.setAlignment(Qt.AlignCenter)
         self.setStyleSheet("border: 1px solid gray;")
         self.setMinimumSize(400, 300)
@@ -121,11 +123,124 @@ class ImageGridWidget(QLabel):
         if self.original_pixmap:
             self.update_display()
 
+    def set_crop_mode(self, enabled):
+        """Enable or disable crop mode"""
+        self.crop_mode = enabled
+        if enabled:
+            self.create_drag_handles()
+        else:
+            self.drag_handles = []
+        self.update_display()
+
+    def create_drag_handles(self):
+        """Create drag handles at grid corners and midpoints"""
+        self.drag_handles = []
+        if not self.original_pixmap or self.grid_x == 0 or self.grid_y == 0:
+            return
+
+        # Get current image dimensions
+        current_pixmap = self.pixmap()
+        if not current_pixmap:
+            return
+
+        width = current_pixmap.width()
+        height = current_pixmap.height()
+
+        # Calculate grid spacing
+        x_spacing = width / self.grid_x
+        y_spacing = height / self.grid_y
+
+        # Corner handles (4 corners of the grid)
+        corners = [
+            (0, 0),  # Top-left
+            (width, 0),  # Top-right
+            (0, height),  # Bottom-left
+            (width, height)  # Bottom-right
+        ]
+
+        for x, y in corners:
+            self.drag_handles.append({'pos': QPoint(int(x), int(y)), 'type': 'corner'})
+
+        # Midpoint handles on outside edges
+        # Top edge midpoints
+        for i in range(1, self.grid_x):
+            x = int(i * x_spacing)
+            self.drag_handles.append({'pos': QPoint(x, 0), 'type': 'edge'})
+
+        # Bottom edge midpoints
+        for i in range(1, self.grid_x):
+            x = int(i * x_spacing)
+            self.drag_handles.append({'pos': QPoint(x, height), 'type': 'edge'})
+
+        # Left edge midpoints
+        for i in range(1, self.grid_y):
+            y = int(i * y_spacing)
+            self.drag_handles.append({'pos': QPoint(0, y), 'type': 'edge'})
+
+        # Right edge midpoints
+        for i in range(1, self.grid_y):
+            y = int(i * y_spacing)
+            self.drag_handles.append({'pos': QPoint(width, y), 'type': 'edge'})
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if not self.pixmap() or not self.crop_mode:
+            return
+
+        painter = QPainter(self)
+        pen = QPen(Qt.blue, 2, Qt.DashLine)
+        painter.setPen(pen)
+
+        # Draw the crop rectangle
+        rect = QRect(self.drag_handles[0]['pos'], self.drag_handles[3]['pos'])
+        painter.drawRect(rect.normalized())
+
+        # Draw drag handles
+        for handle in self.drag_handles:
+            self.draw_drag_handle(painter, handle)
+
+    def draw_drag_handle(self, painter, handle):
+        """Draw a single drag handle"""
+        size = 8
+        rect = QRect(handle['pos'] - QPoint(size // 2, size // 2), QSize(size, size))
+        painter.drawRect(rect)
+
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        if event.button() == Qt.LeftButton and self.crop_mode:
+            # Check if a drag handle was clicked
+            for handle in self.drag_handles:
+                if QRect(handle['pos'] - QPoint(4, 4), QSize(8, 8)).contains(event.pos()):
+                    handle['dragging'] = True
+                    self.update()
+                    return
+
+    def mouseMoveEvent(self, event):
+        super().mouseMoveEvent(event)
+        if event.buttons() & Qt.LeftButton and self.crop_mode:
+            for handle in self.drag_handles:
+                if handle.get('dragging'):
+                    # Move the handle with the mouse
+                    handle['pos'] = event.pos()
+                    self.update()
+                    return
+
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+        if event.button() == Qt.LeftButton and self.crop_mode:
+            for handle in self.drag_handles:
+                handle['dragging'] = False
+
+            # Here you can add code to handle the cropping logic,
+            # such as updating the original_pixmap to the new cropped area.
+            # For now, we just disable crop mode.
+            self.set_crop_mode(False)
+
 
 class PuzzleGridViewer(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Puzzle Grid Viewer")
+        self.setWindowTitle("Puzzle Pieces Maker")
         self.setGeometry(100, 100, 800, 600)
 
         # Central widget
@@ -156,6 +271,11 @@ class PuzzleGridViewer(QMainWindow):
         self.save_button.clicked.connect(self.save_document)
         self.save_button.setEnabled(False)
         button_layout.addWidget(self.save_button)
+
+        self.save_as_button = QPushButton("Save Document As...")
+        self.save_as_button.clicked.connect(self.save_document_as)
+        self.save_as_button.setEnabled(False)
+        button_layout.addWidget(self.save_as_button)
 
         button_layout.addStretch()
         layout.addLayout(button_layout)
@@ -199,6 +319,21 @@ class PuzzleGridViewer(QMainWindow):
         zoom_layout.addStretch()
         layout.addLayout(zoom_layout)
 
+        # Toolbar
+        toolbar_frame = QFrame()
+        toolbar_frame.setFrameStyle(QFrame.StyledPanel)
+        toolbar_frame.setMaximumHeight(50)
+        toolbar_layout = QHBoxLayout(toolbar_frame)
+
+        self.crop_button = QPushButton("Crop")
+        self.crop_button.clicked.connect(self.toggle_crop_mode)
+        self.crop_button.setEnabled(False)
+        self.crop_button.setCheckable(True)
+        toolbar_layout.addWidget(self.crop_button)
+
+        toolbar_layout.addStretch()
+        layout.addWidget(toolbar_frame)
+
         # Scroll area for image display
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(False)
@@ -213,6 +348,7 @@ class PuzzleGridViewer(QMainWindow):
         layout.addWidget(self.status_label)
 
         self.current_image_path = None
+        self.current_document_path = None
 
     def open_image(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -229,6 +365,8 @@ class PuzzleGridViewer(QMainWindow):
                 return
 
             self.current_image_path = file_path
+            # Clear current document path since this is a new image
+            self.current_document_path = None
 
             # Get grid dimensions
             dialog = GridDimensionsDialog(self)
@@ -239,6 +377,8 @@ class PuzzleGridViewer(QMainWindow):
                 self.image_widget.set_image_and_grid(pixmap, grid_x, grid_y)
                 self.grid_button.setEnabled(True)
                 self.save_button.setEnabled(True)
+                self.save_as_button.setEnabled(True)
+                self.crop_button.setEnabled(True)
                 self.enable_zoom_controls(True)
 
                 filename = os.path.basename(file_path)
@@ -248,6 +388,8 @@ class PuzzleGridViewer(QMainWindow):
                 self.image_widget.set_image_and_grid(pixmap, 0, 0)
                 self.grid_button.setEnabled(True)
                 self.save_button.setEnabled(True)
+                self.save_as_button.setEnabled(True)
+                self.crop_button.setEnabled(True)
                 self.enable_zoom_controls(True)
                 filename = os.path.basename(file_path)
                 self.status_label.setText(f"Image: {filename} | No grid")
@@ -264,7 +406,7 @@ class PuzzleGridViewer(QMainWindow):
         if not self.current_image_path:
             return
 
-        dialog = GridDimensionsDialog(self)
+        dialog = GridDimensionsDialog(self, self.image_widget.grid_x, self.image_widget.grid_y)
         if dialog.exec_() == QDialog.Accepted:
             grid_x, grid_y = dialog.get_dimensions()
 
@@ -327,17 +469,65 @@ class PuzzleGridViewer(QMainWindow):
         if not self.current_image_path:
             return
 
+        # If we have a current document path, save to it directly
+        if self.current_document_path:
+            file_path = self.current_document_path
+        else:
+            # No current document path, so act like "Save As..."
+            self.save_document_as()
+            return
+
+        # Create the document data with all required information
+        # Convert backslashes to forward slashes for cross-platform compatibility
+        normalized_image_path = self.current_image_path.replace('\\', '/')
+
+        # Get current window geometry
+        geometry = self.geometry()
+
+        document_data = {
+            "grid_x": self.image_widget.grid_x,
+            "grid_y": self.image_widget.grid_y,
+            "image_path": normalized_image_path,
+            "zoom_value": self.image_widget.zoom_factor,
+            "window_width": geometry.width(),
+            "window_height": geometry.height(),
+            "window_x": geometry.x(),
+            "window_y": geometry.y()
+        }
+
+        try:
+            with open(file_path, "w") as json_file:
+                json.dump(document_data, json_file, indent=2)
+
+            QMessageBox.information(
+                self,
+                "Document Saved",
+                f"Document saved successfully to:\n{file_path}\n\n"
+                f"Grid: {document_data['grid_x']}x{document_data['grid_y']}\n"
+                f"Zoom: {int(document_data['zoom_value'] * 100)}%"
+            )
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Save Error",
+                f"Failed to save document:\n{str(e)}"
+            )
+
+    def save_document_as(self):
+        if not self.current_image_path:
+            return
+
         # Get the directory of the current image
         directory = os.path.dirname(self.current_image_path)
 
         # Create a default file name based on the image name
         image_name = os.path.splitext(os.path.basename(self.current_image_path))[0]
-        default_file_name = os.path.join(directory, f"{image_name}.puz.json")
+        default_file_name = os.path.join(directory, f"{image_name}_modified.puz.json")
 
         # Show a file dialog to save the document
         file_path, _ = QFileDialog.getSaveFileName(
             self,
-            "Save Document",
+            "Save Document As",
             default_file_name,
             "Puzzle JSON Files (*.puz.json);;JSON Files (*.json);;All Files (*)"
         )
@@ -347,11 +537,18 @@ class PuzzleGridViewer(QMainWindow):
             # Convert backslashes to forward slashes for cross-platform compatibility
             normalized_image_path = self.current_image_path.replace('\\', '/')
 
+            # Get current window geometry
+            geometry = self.geometry()
+
             document_data = {
                 "grid_x": self.image_widget.grid_x,
                 "grid_y": self.image_widget.grid_y,
                 "image_path": normalized_image_path,
-                "zoom_value": self.image_widget.zoom_factor
+                "zoom_value": self.image_widget.zoom_factor,
+                "window_width": geometry.width(),
+                "window_height": geometry.height(),
+                "window_x": geometry.x(),
+                "window_y": geometry.y()
             }
 
             try:
@@ -365,6 +562,10 @@ class PuzzleGridViewer(QMainWindow):
                     f"Grid: {document_data['grid_x']}x{document_data['grid_y']}\n"
                     f"Zoom: {int(document_data['zoom_value'] * 100)}%"
                 )
+
+                # Update current document path
+                self.current_document_path = file_path
+
             except Exception as e:
                 QMessageBox.critical(
                     self,
@@ -384,6 +585,12 @@ class PuzzleGridViewer(QMainWindow):
             image_path = document_data.get("image_path")
             zoom_value = document_data.get("zoom_value", 1.0)
 
+            # Get window dimensions (with fallbacks for older documents)
+            window_width = document_data.get("window_width")
+            window_height = document_data.get("window_height")
+            window_x = document_data.get("window_x")
+            window_y = document_data.get("window_y")
+
             if grid_x is None or grid_y is None or image_path is None:
                 raise ValueError("Invalid document structure.")
 
@@ -393,6 +600,11 @@ class PuzzleGridViewer(QMainWindow):
 
             # Update viewer state
             self.current_image_path = image_path
+            self.current_document_path = file_path  # Set the current document path
+
+            # Restore window dimensions if available
+            if all(v is not None for v in [window_width, window_height, window_x, window_y]):
+                self.setGeometry(window_x, window_y, window_width, window_height)
 
             # Load and display the image
             pixmap = QPixmap(image_path)
@@ -411,9 +623,15 @@ class PuzzleGridViewer(QMainWindow):
             filename = os.path.basename(image_path)
             self.status_label.setText(f"Image: {filename} | Grid: {grid_x}x{grid_y} | Zoom: {int(zoom_value * 100)}%")
 
+            # Update window title to include document name
+            document_name = os.path.basename(file_path)
+            self.setWindowTitle(f"Puzzle Pieces Maker - {document_name}")
+
             # Enable controls
             self.grid_button.setEnabled(True)
             self.save_button.setEnabled(True)
+            self.save_as_button.setEnabled(True)
+            self.crop_button.setEnabled(True)
             self.enable_zoom_controls(True)
 
             return True
@@ -437,6 +655,17 @@ class PuzzleGridViewer(QMainWindow):
 
         if file_path:
             self.load_document_from_path(file_path)
+
+    def toggle_crop_mode(self):
+        """Toggle crop mode on/off"""
+        if self.crop_button.isChecked():
+            # Enable crop mode
+            self.image_widget.set_crop_mode(True)
+            self.crop_button.setText("Exit Crop")
+        else:
+            # Disable crop mode
+            self.image_widget.set_crop_mode(False)
+            self.crop_button.setText("Crop")
 
 
 def main():

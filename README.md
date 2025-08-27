@@ -1,4 +1,4 @@
-# Puzzle Grid Viewer
+# Puzzle Pieces Maker
 
 A PyQt5 application for viewing images with customizable grid overlays, designed for puzzle piece planning and analysis.
 
@@ -31,12 +31,12 @@ A PyQt5 application for viewing images with customizable grid overlays, designed
 
 ### Basic Usage
 ```bash
-python puzzle_grid_viewer.py
+python puzzle_pieces_maker.py
 ```
 
 ### Load Document from Command Line
 ```bash
-python puzzle_grid_viewer.py path/to/document.puz.json
+python puzzle_pieces_maker.py path/to/document.puz.json
 ```
 
 ### Application Workflow
