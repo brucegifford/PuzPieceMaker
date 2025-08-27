@@ -55,6 +55,7 @@ class ImageGridWidget(QLabel):
         self.crop_mode = False
         self.drag_handles = []
         self.padding = 10  # Add 10 pixel padding around the image
+        self.grid_points = []  # 2D array to store grid point locations
         self.setAlignment(Qt.AlignCenter)
         self.setStyleSheet("border: 1px solid gray;")
         self.setMinimumSize(400, 300)
@@ -65,10 +66,12 @@ class ImageGridWidget(QLabel):
         self.grid_y = grid_y
         self.zoom_factor = 1.0  # Reset zoom when new image is loaded
         self.update_display()
+        self.calculate_grid_points()  # Calculate grid points when setting image and grid
 
     def set_zoom(self, zoom_factor):
         self.zoom_factor = zoom_factor
         self.update_display()
+        self.calculate_grid_points()  # Recalculate grid points when zoom changes
 
     def update_display(self):
         if not self.original_pixmap:
@@ -254,6 +257,60 @@ class ImageGridWidget(QLabel):
             # For now, we just disable crop mode.
             self.set_crop_mode(False)
 
+    def calculate_grid_points(self):
+        """Calculate the 2D array of grid point locations in original image dimensions"""
+        self.grid_points = []
+
+        if not self.original_pixmap or self.grid_x == 0 or self.grid_y == 0:
+            return
+
+        # Use original image dimensions (unscaled)
+        original_size = self.original_pixmap.size()
+        width = original_size.width()
+        height = original_size.height()
+
+        # Calculate grid spacing in original image coordinates
+        x_spacing = width / self.grid_x
+        y_spacing = height / self.grid_y
+
+        # Create 2D array with grid point coordinates in original image dimensions
+        # Array structure: grid_points[row][col] = (x, y) in original image pixels
+        for row in range(self.grid_y + 1):  # +1 because we need lines at both edges
+            grid_row = []
+            y = int(row * y_spacing)
+
+            for col in range(self.grid_x + 1):  # +1 because we need lines at both edges
+                x = int(col * x_spacing)
+                grid_row.append((x, y))
+
+            self.grid_points.append(grid_row)
+            print("Row %d: %s" % (row, grid_row))  # Debug output for each row
+
+        # Print debug information about grid points (can be removed later)
+        print(f"Grid points calculated: {len(self.grid_points)} rows x {len(self.grid_points[0]) if self.grid_points else 0} cols")
+        print(f"Original image size: {width}x{height}")
+        if self.grid_points:
+            print(f"Top-left corner: {self.grid_points[0][0]}")
+            print(f"Bottom-right corner: {self.grid_points[-1][-1]}")
+
+    def get_grid_point(self, row, col):
+        """Get the coordinates of a specific grid point in original image dimensions"""
+        if (0 <= row < len(self.grid_points) and
+            0 <= col < len(self.grid_points[0]) if self.grid_points else False):
+            return self.grid_points[row][col]
+        return None
+
+    def get_scaled_grid_point(self, row, col):
+        """Get the coordinates of a specific grid point scaled to current zoom and with padding offset"""
+        original_point = self.get_grid_point(row, col)
+        if original_point is None:
+            return None
+
+        # Scale the original coordinates to current zoom level
+        scaled_x = int(original_point[0] * self.zoom_factor) + self.padding
+        scaled_y = int(original_point[1] * self.zoom_factor) + self.padding
+
+        return (scaled_x, scaled_y)
 
 class PuzzleGridViewer(QMainWindow):
     def __init__(self):
