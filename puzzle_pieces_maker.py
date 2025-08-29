@@ -62,6 +62,8 @@ class ImageGridWidget(QLabel):
         self.setAlignment(Qt.AlignCenter)
         self.setStyleSheet("border: 1px solid gray;")
         self.setMinimumSize(400, 300)
+        # Enable focus so we can receive keyboard events
+        self.setFocusPolicy(Qt.StrongFocus)
 
     def set_image_and_grid(self, pixmap, grid_x_max, grid_y_max):
         self.original_pixmap = pixmap
@@ -326,6 +328,9 @@ class ImageGridWidget(QLabel):
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
         if event.button() == Qt.LeftButton and self.crop_mode:
+            # Set focus so we can receive keyboard events
+            self.setFocus()
+
             # Check if a drag handle was clicked
             for handle in self.drag_handles:
                 if QRect(handle['pos'] - QPoint(4, 4), QSize(8, 8)).contains(event.pos()):
@@ -461,6 +466,43 @@ class ImageGridWidget(QLabel):
 
             # Handle dragging is complete, but keep crop mode active
             # User can exit crop mode manually using the crop button
+
+    def keyPressEvent(self, event):
+        """Handle key press events - particularly Escape to cancel drag operations"""
+        super().keyPressEvent(event)
+
+        # Check if Escape key is pressed while dragging
+        if event.key() == Qt.Key_Escape and self.is_dragging:
+            self.cancel_drag_operation()
+        else:
+            # Pass other key events to parent
+            super().keyPressEvent(event)
+
+    def cancel_drag_operation(self):
+        """Cancel the current drag operation and restore original handle positions"""
+        if not self.is_dragging:
+            return
+
+        print("Drag operation cancelled - restoring original positions")
+
+        # Restore handle positions from the original grid points
+        if self.drag_grid_points:
+            # Recreate handles at their original positions
+            self.create_drag_handles()
+
+        # Clear the drag grid points copy without applying changes
+        self.drag_grid_points = []
+
+        # Clear dragging state
+        self.is_dragging = False
+        self.dragging_handle = None
+
+        # Clear dragging flags from all handles
+        for handle in self.drag_handles:
+            handle['dragging'] = False
+
+        # Redraw to show the restored state
+        self.update()
 
     def calculate_grid_points(self):
         """Calculate the 2D array of grid point locations in original image dimensions"""
