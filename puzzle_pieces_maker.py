@@ -588,6 +588,12 @@ class PuzzleGridViewer(QMainWindow):
         self.load_button.clicked.connect(self.load_document)
         button_layout.addWidget(self.load_button)
 
+        # In PuzzleGridViewer.__init__ (button layout section)
+        self.reload_button = QPushButton("Reload Existing Document")
+        self.reload_button.clicked.connect(self.reload_document)
+        self.reload_button.setEnabled(False)
+        button_layout.addWidget(self.reload_button)
+
         self.open_button = QPushButton("Open Image")
         self.open_button.clicked.connect(self.open_image)
         button_layout.addWidget(self.open_button)
@@ -830,6 +836,9 @@ class PuzzleGridViewer(QMainWindow):
                 f"Grid: {document_data['grid_x']}x{document_data['grid_y']}\n"
                 f"Zoom: {int(document_data['zoom_value'] * 100)}%"
             )
+            # Enable reload button since we have a loaded document
+            self.reload_button.setEnabled(True)
+
             return True
         except Exception as e:
             QMessageBox.critical(
@@ -957,6 +966,9 @@ class PuzzleGridViewer(QMainWindow):
             self.crop_button.setEnabled(True)
             self.enable_zoom_controls(True)
 
+            # Enable reload button since we have a loaded document
+            self.reload_button.setEnabled(True)
+
             return True
 
         except Exception as e:
@@ -978,6 +990,20 @@ class PuzzleGridViewer(QMainWindow):
 
         if file_path:
             self.load_document_from_path(file_path)
+
+    def reload_document(self):
+        """Reload the current document from disk"""
+        if self.current_document_path and os.path.exists(self.current_document_path):
+            reply = QMessageBox.question(
+                self,
+                "Reload Document",
+                "Any unsaved changes will be lost. Do you want to reload?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if reply == QMessageBox.Yes:
+                self.load_document_from_path(self.current_document_path)
+        else:
+            QMessageBox.warning(self, "Reload Error", "No document to reload or file not found.")
 
     def toggle_crop_mode(self):
         """Toggle crop mode on/off"""
