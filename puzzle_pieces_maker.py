@@ -49,8 +49,8 @@ class ImageGridWidget(QLabel):
     def __init__(self):
         super().__init__()
         self.original_pixmap = None
-        self.grid_x = 0
-        self.grid_y = 0
+        self.grid_x_max = 0
+        self.grid_y_max = 0
         self.zoom_factor = 1.0
         self.crop_mode = False
         self.drag_handles = []
@@ -60,10 +60,10 @@ class ImageGridWidget(QLabel):
         self.setStyleSheet("border: 1px solid gray;")
         self.setMinimumSize(400, 300)
 
-    def set_image_and_grid(self, pixmap, grid_x, grid_y):
+    def set_image_and_grid(self, pixmap, grid_x_max, grid_y_max):
         self.original_pixmap = pixmap
-        self.grid_x = grid_x
-        self.grid_y = grid_y
+        self.grid_x_max = grid_x_max
+        self.grid_y_max = grid_y_max
         self.zoom_factor = 1.0  # Reset zoom when new image is loaded
         self.calculate_grid_points()  # Calculate grid points BEFORE update_display
         self.update_display()
@@ -129,7 +129,7 @@ class ImageGridWidget(QLabel):
         height = result_pixmap.height()
 
         # Only draw grid if we have grid points
-        if not self.grid_points or self.grid_x == 0 or self.grid_y == 0:
+        if not self.grid_points or self.grid_x_max == 0 or self.grid_y_max == 0:
             painter.end()
             return result_pixmap
 
@@ -139,9 +139,9 @@ class ImageGridWidget(QLabel):
         scale_y = height / original_size.height()
 
         # Draw vertical line segments using grid points
-        for col in range(self.grid_x + 1):
+        for col in range(self.grid_x_max + 1):
             # Draw segments between consecutive points in this column
-            for row in range(self.grid_y):
+            for row in range(self.grid_y_max):
                 # Get start point (current row)
                 start_x = int(self.grid_points[row][col][0] * scale_x)
                 start_y = int(self.grid_points[row][col][1] * scale_y)
@@ -154,9 +154,9 @@ class ImageGridWidget(QLabel):
                 painter.drawLine(start_x, start_y, end_x, end_y)
 
         # Draw horizontal line segments using grid points
-        for row in range(self.grid_y + 1):
+        for row in range(self.grid_y_max + 1):
             # Draw segments between consecutive points in this row
-            for col in range(self.grid_x):
+            for col in range(self.grid_x_max):
                 # Get start point (current column)
                 start_x = int(self.grid_points[row][col][0] * scale_x)
                 start_y = int(self.grid_points[row][col][1] * scale_y)
@@ -186,60 +186,101 @@ class ImageGridWidget(QLabel):
         self.update_display()
 
     def create_drag_handles(self):
-        """Create drag handles at grid corners and midpoints"""
+        """Create drag handles at all grid perimeter points"""
         self.drag_handles = []
-        if not self.original_pixmap or self.grid_x == 0 or self.grid_y == 0:
+        if not self.original_pixmap or self.grid_x_max == 0 or self.grid_y_max == 0 or not self.grid_points:
             return
 
-        # Get the actual image rectangle (excluding padding)
-        image_rect = self.get_image_rect()
-        if image_rect.isNull():
-            return
+        # Create handles for all perimeter points of the grid
+        # Store (scaled_point, row, col) tuples to avoid duplicate lookups
+        perimeter_points = set()  # Use set to avoid duplicate points at corners
 
-        # Get image dimensions and position
-        left = image_rect.left()
-        top = image_rect.top()
-        right = image_rect.right()
-        bottom = image_rect.bottom()
-        center_x = left + image_rect.width() // 2
-        center_y = top + image_rect.height() // 2
+        # Top edge: all points in row 0
+        for col in range(self.grid_x_max + 1):
+            scaled_point = self.get_scaled_grid_point(0, col)
+            if scaled_point:
+                perimeter_points.add((scaled_point, 0, col))
 
-        # Corner handles (4 corners of the image)
-        corners = [
-            (left, top),      # Top-left
-            (right, top),     # Top-right
-            (left, bottom),   # Bottom-left
-            (right, bottom)   # Bottom-right
-        ]
+        # Bottom edge: all points in last row
+        for col in range(self.grid_x_max + 1):
+            scaled_point = self.get_scaled_grid_point(self.grid_y_max, col)
+            if scaled_point:
+                perimeter_points.add((scaled_point, self.grid_y_max, col))
 
-        for x, y in corners:
-            self.drag_handles.append({'pos': QPoint(int(x), int(y)), 'type': 'corner'})
+        # Left edge: all points in column 0 (excluding corners already added)
+        for row in range(1, self.grid_y_max):
+            scaled_point = self.get_scaled_grid_point(row, 0)
+            if scaled_point:
+                perimeter_points.add((scaled_point, row, 0))
 
-        # Single midpoint handle on each outside edge
-        # Top edge center
-        self.drag_handles.append({'pos': QPoint(center_x, top), 'type': 'edge'})
+        # Right edge: all points in last column (excluding corners already added)
+        for row in range(1, self.grid_y_max):
+            scaled_point = self.get_scaled_grid_point(row, self.grid_x_max)
+            if scaled_point:
+                perimeter_points.add((scaled_point, row, self.grid_x_max))
 
-        # Bottom edge center
-        self.drag_handles.append({'pos': QPoint(center_x, bottom), 'type': 'edge'})
+        # Convert set to list of drag handles with edge flags
+        for scaled_point, point_row, point_col in perimeter_points:
+            x, y = scaled_point
 
-        # Left edge center
-        self.drag_handles.append({'pos': QPoint(left, center_y), 'type': 'edge'})
+            # Set edge flags based on stored indices
+            is_left = point_col == 0
+            is_right = point_col == self.grid_x_max
+            is_top = point_row == 0
+            is_bottom = point_row == self.grid_y_max
 
-        # Right edge center
-        self.drag_handles.append({'pos': QPoint(right, center_y), 'type': 'edge'})
+            self.drag_handles.append({
+                'pos': QPoint(int(x), int(y)),
+                'left': is_left,
+                'right': is_right,
+                'top': is_top,
+                'bottom': is_bottom,
+                'row': point_row,
+                'col': point_col
+            })
 
     def paintEvent(self, event):
         super().paintEvent(event)
-        if not self.pixmap() or not self.crop_mode:
+        if not self.pixmap() or not self.crop_mode or not self.drag_handles:
+            return
+
+        # Check grid validity before creating painter
+        if not self.grid_points or self.grid_x_max == 0 or self.grid_y_max == 0:
             return
 
         painter = QPainter(self)
         pen = QPen(Qt.blue, 2, Qt.DashLine)
         painter.setPen(pen)
 
-        # Draw the crop rectangle
-        rect = QRect(self.drag_handles[0]['pos'], self.drag_handles[3]['pos'])
-        painter.drawRect(rect.normalized())
+        # Draw line segments between adjacent perimeter points instead of a rectangle
+
+        # Draw top edge: connect all points in row 0
+        for col in range(self.grid_x_max):
+            start_point = self.get_scaled_grid_point(0, col)
+            end_point = self.get_scaled_grid_point(0, col + 1)
+            if start_point and end_point:
+                painter.drawLine(start_point[0], start_point[1], end_point[0], end_point[1])
+
+        # Draw bottom edge: connect all points in last row
+        for col in range(self.grid_x_max):
+            start_point = self.get_scaled_grid_point(self.grid_y_max, col)
+            end_point = self.get_scaled_grid_point(self.grid_y_max, col + 1)
+            if start_point and end_point:
+                painter.drawLine(start_point[0], start_point[1], end_point[0], end_point[1])
+
+        # Draw left edge: connect all points in column 0
+        for row in range(self.grid_y_max):
+            start_point = self.get_scaled_grid_point(row, 0)
+            end_point = self.get_scaled_grid_point(row + 1, 0)
+            if start_point and end_point:
+                painter.drawLine(start_point[0], start_point[1], end_point[0], end_point[1])
+
+        # Draw right edge: connect all points in last column
+        for row in range(self.grid_y_max):
+            start_point = self.get_scaled_grid_point(row, self.grid_x_max)
+            end_point = self.get_scaled_grid_point(row + 1, self.grid_x_max)
+            if start_point and end_point:
+                painter.drawLine(start_point[0], start_point[1], end_point[0], end_point[1])
 
         # Draw drag handles
         for handle in self.drag_handles:
@@ -277,16 +318,14 @@ class ImageGridWidget(QLabel):
             for handle in self.drag_handles:
                 handle['dragging'] = False
 
-            # Here you can add code to handle the cropping logic,
-            # such as updating the original_pixmap to the new cropped area.
-            # For now, we just disable crop mode.
-            self.set_crop_mode(False)
+            # Handle dragging is complete, but keep crop mode active
+            # User can exit crop mode manually using the crop button
 
     def calculate_grid_points(self):
         """Calculate the 2D array of grid point locations in original image dimensions"""
         self.grid_points = []
 
-        if not self.original_pixmap or self.grid_x == 0 or self.grid_y == 0:
+        if not self.original_pixmap or self.grid_x_max == 0 or self.grid_y_max == 0:
             return
 
         # Use original image dimensions (unscaled)
@@ -295,16 +334,16 @@ class ImageGridWidget(QLabel):
         height = original_size.height()
 
         # Calculate grid spacing in original image coordinates
-        x_spacing = width / self.grid_x
-        y_spacing = height / self.grid_y
+        x_spacing = width / self.grid_x_max
+        y_spacing = height / self.grid_y_max
 
         # Create 2D array with grid point coordinates in original image dimensions
         # Array structure: grid_points[row][col] = (x, y) in original image pixels
-        for row in range(self.grid_y + 1):  # +1 because we need lines at both edges
+        for row in range(self.grid_y_max + 1):  # +1 because we need lines at both edges
             grid_row = []
             y = int(row * y_spacing)
 
-            for col in range(self.grid_x + 1):  # +1 because we need lines at both edges
+            for col in range(self.grid_x_max + 1):  # +1 because we need lines at both edges
                 x = int(col * x_spacing)
                 grid_row.append((x, y))
 
@@ -514,7 +553,7 @@ class PuzzleGridViewer(QMainWindow):
         if not self.current_image_path:
             return
 
-        dialog = GridDimensionsDialog(self, self.image_widget.grid_x, self.image_widget.grid_y)
+        dialog = GridDimensionsDialog(self, self.image_widget.grid_x_max, self.image_widget.grid_y_max)
         if dialog.exec_() == QDialog.Accepted:
             grid_x, grid_y = dialog.get_dimensions()
 
@@ -586,8 +625,8 @@ class PuzzleGridViewer(QMainWindow):
         geometry = self.geometry()
 
         document_data = {
-            "grid_x": self.image_widget.grid_x,
-            "grid_y": self.image_widget.grid_y,
+            "grid_x": self.image_widget.grid_x_max,
+            "grid_y": self.image_widget.grid_y_max,
             "image_path": normalized_image_path,
             "zoom_value": self.image_widget.zoom_factor,
             "grid_points": self.image_widget.grid_points,  # Save grid points array
@@ -696,8 +735,8 @@ class PuzzleGridViewer(QMainWindow):
 
             # Set up the image widget
             self.image_widget.original_pixmap = pixmap
-            self.image_widget.grid_x = grid_x
-            self.image_widget.grid_y = grid_y
+            self.image_widget.grid_x_max = grid_x
+            self.image_widget.grid_y_max = grid_y
 
             # Load saved grid points if available, otherwise calculate them
             if saved_grid_points:
