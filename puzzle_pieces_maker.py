@@ -761,9 +761,13 @@ class PuzzleGridViewer(QMainWindow):
             self.current_image_path = image_path
             self.current_document_path = file_path  # Set the current document path
 
-            # Restore window dimensions if available
+            # Restore window dimensions if available, ensuring it's on screen
             if all(v is not None for v in [window_width, window_height, window_x, window_y]):
-                self.setGeometry(window_x, window_y, window_width, window_height)
+                # Use the ensure_window_on_screen method to validate and adjust the position
+                adjusted_x, adjusted_y, adjusted_width, adjusted_height = self.ensure_window_on_screen(
+                    window_x, window_y, window_width, window_height
+                )
+                self.setGeometry(adjusted_x, adjusted_y, adjusted_width, adjusted_height)
 
             # Load and display the image
             pixmap = QPixmap(image_path)
@@ -841,6 +845,30 @@ class PuzzleGridViewer(QMainWindow):
             self.image_widget.set_crop_mode(False)
             self.crop_button.setText("Crop")
 
+    def ensure_window_on_screen(self, x, y, width, height):
+        """Ensure the window position is visible on screen, adjusting if necessary"""
+        # Get the desktop widget to access screen geometry
+        desktop = QApplication.desktop()
+        screen_geometry = desktop.availableGeometry()
+
+        # Ensure the window isn't too large for the screen
+        max_width = screen_geometry.width() - 50  # Leave 50px margin
+        max_height = screen_geometry.height() - 50
+        width = min(width, max_width)
+        height = min(height, max_height)
+
+        # Ensure the window is at least partially visible on screen
+        # Check if the saved position would put the window completely off-screen
+        min_x = screen_geometry.left()
+        max_x = screen_geometry.right() - width
+        min_y = screen_geometry.top()
+        max_y = screen_geometry.bottom() - height
+
+        # Adjust position if it's off-screen
+        x = max(min_x, min(x, max_x))
+        y = max(min_y, min(y, max_y))
+
+        return x, y, width, height
 
 def main():
     app = QApplication(sys.argv)
