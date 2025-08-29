@@ -307,8 +307,46 @@ class ImageGridWidget(QLabel):
         if event.buttons() & Qt.LeftButton and self.crop_mode:
             for handle in self.drag_handles:
                 if handle.get('dragging'):
-                    # Move the handle with the mouse
-                    handle['pos'] = event.pos()
+                    # Calculate the movement delta
+                    old_pos = handle['pos']
+                    new_pos = event.pos()
+                    delta_x = new_pos.x() - old_pos.x()
+                    delta_y = new_pos.y() - old_pos.y()
+
+                    # Determine which axes this handle can move along
+                    can_move_x = handle['left'] or handle['right']
+                    can_move_y = handle['top'] or handle['bottom']
+
+                    # Set delta to 0 if movement is not allowed
+                    if not can_move_x:
+                        delta_x = 0
+                    if not can_move_y:
+                        delta_y = 0
+
+                    # Move the dragged handle
+                    handle['pos'] = QPoint(old_pos.x() + delta_x, old_pos.y() + delta_y)
+
+                    # Move all handles that share edge attributes with the dragged handle
+                    for other_handle in self.drag_handles:
+                        if other_handle is handle:
+                            continue  # Skip the handle being dragged
+
+                        # If dragged handle is on left edge, move all left edge handles horizontally
+                        if handle['left'] and other_handle['left'] and can_move_x:
+                            other_handle['pos'] = QPoint(other_handle['pos'].x() + delta_x, other_handle['pos'].y())
+
+                        # If dragged handle is on right edge, move all right edge handles horizontally
+                        if handle['right'] and other_handle['right'] and can_move_x:
+                            other_handle['pos'] = QPoint(other_handle['pos'].x() + delta_x, other_handle['pos'].y())
+
+                        # If dragged handle is on top edge, move all top edge handles vertically
+                        if handle['top'] and other_handle['top'] and can_move_y:
+                            other_handle['pos'] = QPoint(other_handle['pos'].x(), other_handle['pos'].y() + delta_y)
+
+                        # If dragged handle is on bottom edge, move all bottom edge handles vertically
+                        if handle['bottom'] and other_handle['bottom'] and can_move_y:
+                            other_handle['pos'] = QPoint(other_handle['pos'].x(), other_handle['pos'].y() + delta_y)
+
                     self.update()
                     return
 
