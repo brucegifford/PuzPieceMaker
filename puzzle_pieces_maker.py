@@ -340,6 +340,7 @@ class ImageGridWidget(QLabel):
                     handle['dragging'] = True
                     # Copy current grid points to drag_grid_points
                     self.drag_grid_points = [row.copy() for row in self.grid_points]
+                    self.last_drag_pos = event.pos()
                     self.update()
                     return
 
@@ -349,10 +350,12 @@ class ImageGridWidget(QLabel):
             handle = self.dragging_handle
 
             # Calculate the movement delta
-            old_pos = handle['pos']
-            new_pos = event.pos()
-            delta_x = new_pos.x() - old_pos.x()
-            delta_y = new_pos.y() - old_pos.y()
+            old_pos = self.last_drag_pos
+            #old_pos = handle['pos']
+            self.last_drag_pos = event.pos()
+            delta_x = self.last_drag_pos.x() - old_pos.x()
+            delta_y = self.last_drag_pos.y() - old_pos.y()
+
 
             # Determine which axes this handle can move along
             can_move_x = handle['left'] or handle['right']
