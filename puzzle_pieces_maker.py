@@ -664,6 +664,7 @@ class PuzzleGridViewer(QMainWindow):
         toolbar_frame.setMaximumHeight(50)
         toolbar_layout = QHBoxLayout(toolbar_frame)
 
+        self.crop_mode = False
         self.crop_button = QPushButton("Crop")
         self.crop_button.clicked.connect(self.toggle_crop_mode)
         self.crop_button.setEnabled(False)
@@ -707,6 +708,9 @@ class PuzzleGridViewer(QMainWindow):
             # Clear current document path since this is a new image
             self.current_document_path = None
 
+            # clear away existing grid and crop mode
+            self.clear_crop_mode()
+
             # Get grid dimensions
             dialog = GridDimensionsDialog(self)
             if dialog.exec_() == QDialog.Accepted:
@@ -747,6 +751,9 @@ class PuzzleGridViewer(QMainWindow):
 
         dialog = GridDimensionsDialog(self, self.image_widget.grid_x_max, self.image_widget.grid_y_max)
         if dialog.exec_() == QDialog.Accepted:
+            # clear away existing grid and crop mode
+            self.clear_crop_mode()
+
             grid_x, grid_y = dialog.get_dimensions()
 
             # Reload the original image and apply new grid
@@ -887,8 +894,18 @@ class PuzzleGridViewer(QMainWindow):
                 # Update current document path only if save was successful
                 self.current_document_path = file_path
 
+    def clear_crop_mode(self):
+        if self.crop_mode:
+            # clear drag movde
+            self.image_widget.cancel_drag_operation()
+            # restore button state
+            # Uncheck the crop button
+            self.crop_button.setChecked(False)
+            self.toggle_crop_mode()
 
     def load_document_from_path(self, file_path):
+        self.clear_crop_mode()
+
         """Load a document from a given file path"""
         try:
             with open(file_path, "r") as json_file:
@@ -1012,10 +1029,12 @@ class PuzzleGridViewer(QMainWindow):
         """Toggle crop mode on/off"""
         if self.crop_button.isChecked():
             # Enable crop mode
+            self.crop_mode = True
             self.image_widget.set_crop_mode(True)
             self.crop_button.setText("Exit Crop")
         else:
             # Disable crop mode
+            self.crop_mode = False
             self.image_widget.set_crop_mode(False)
             self.crop_button.setText("Crop")
 
