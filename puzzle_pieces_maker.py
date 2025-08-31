@@ -1115,24 +1115,51 @@ class PuzzleGridViewer(QMainWindow):
         """Ensure the window position is visible on screen, adjusting if necessary"""
         # Get the desktop widget to access screen geometry
         desktop = QApplication.desktop()
-        screen_geometry = desktop.availableGeometry()
 
-        # Ensure the window isn't too large for the screen
-        max_width = screen_geometry.width() - 50  # Leave 50px margin
-        max_height = screen_geometry.height() - 50
+        # Get all available screens
+        num_screens = desktop.screenCount()
+        all_screens_geometry = QRect()
+
+        # Calculate the combined geometry of all screens
+        for i in range(num_screens):
+            screen_geometry = desktop.availableGeometry(i)
+            if i == 0:
+                all_screens_geometry = screen_geometry
+            else:
+                all_screens_geometry = all_screens_geometry.united(screen_geometry)
+
+        # Ensure the window isn't too large for any screen
+        max_width = all_screens_geometry.width()
+        max_height = all_screens_geometry.height()
         width = min(width, max_width)
         height = min(height, max_height)
 
-        # Ensure the window is at least partially visible on screen
-        # Check if the saved position would put the window completely off-screen
-        min_x = screen_geometry.left()
-        max_x = screen_geometry.right() - width
-        min_y = screen_geometry.top()
-        max_y = screen_geometry.bottom() - height
+        # Check if the window would be visible on any screen
+        window_rect = QRect(x, y, width, height)
+        is_visible_on_any_screen = False
 
-        # Adjust position if it's off-screen
-        x = max(min_x, min(x, max_x))
-        y = max(min_y, min(y, max_y))
+        for i in range(num_screens):
+            screen_geometry = desktop.availableGeometry(i)
+            # Check if the window intersects with this screen (at least partially visible)
+            if window_rect.intersects(screen_geometry):
+                # Check if at least 25% of the window is visible on this screen
+                intersection = window_rect.intersected(screen_geometry)
+                visible_area = intersection.width() * intersection.height()
+                total_area = width * height
+                if visible_area >= total_area * 0.25:  # At least 25% visible
+                    is_visible_on_any_screen = True
+                    break
+
+        # If not sufficiently visible on any screen, move to primary screen
+        if not is_visible_on_any_screen:
+            primary_screen = desktop.availableGeometry(desktop.primaryScreen())
+            # Center the window on the primary screen
+            x = primary_screen.x() + (primary_screen.width() - width) // 2
+            y = primary_screen.y() + (primary_screen.height() - height) // 2
+
+            # Ensure it fits within the primary screen bounds
+            x = max(primary_screen.left(), min(x, primary_screen.right() - width))
+            y = max(primary_screen.top(), min(y, primary_screen.bottom() - height))
 
         return x, y, width, height
 
