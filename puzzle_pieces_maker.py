@@ -316,6 +316,10 @@ class ImageGridWidget(QLabel):
                 painter.drawLine(start_point[0], start_point[1], end_point[0], end_point[1])
 
         # Draw drag handles
+        """
+        if self.drag_handles:
+            print("Drawing drag handles, top-left handle at:", self.drag_handles[0]['pos'])  # Debug output
+        """
         for handle in self.drag_handles:
             self.draw_drag_handle(painter, handle)
 
@@ -324,6 +328,20 @@ class ImageGridWidget(QLabel):
         size = 8
         rect = QRect(handle['pos'] - QPoint(size // 2, size // 2), QSize(size, size))
         painter.drawRect(rect)
+
+    def update_drag_handle_positions(self):
+        for handle in self.drag_handles:
+            if not handle.get('updated', True):
+                x, y = self.get_scaled_grid_point(handle['row'], handle['col'], self.drag_grid_points)
+                old_y = handle['pos'].y()
+                handle['pos'] = QPoint(int(x), int(y))
+                new_y = handle['pos'].y()
+            handle['updated'] = False  # Reset for next update
+        """
+        print("update drag handles, top-left handle at:", self.drag_handles[0]['pos'])  # Debug output\
+        print("Top-left grid point:", self.get_grid_point(0, 0, self.drag_grid_points))  # Debug output
+        print("Top-left rgrid point:", self.drag_grid_points[0][0])  # Debug output
+        """
 
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
@@ -345,35 +363,77 @@ class ImageGridWidget(QLabel):
                     return
 
     def mouseMoveEvent(self, event):
-        super().mouseMoveEvent(event)
-        if event.buttons() & Qt.LeftButton and self.crop_mode and self.is_dragging and self.dragging_handle:
-            handle = self.dragging_handle
 
-            # Calculate the movement delta
-            old_pos = self.last_drag_pos
-            #old_pos = handle['pos']
-            self.last_drag_pos = event.pos()
-            delta_x = self.last_drag_pos.x() - old_pos.x()
-            delta_y = self.last_drag_pos.y() - old_pos.y()
+        def get_old_x_values_to_the_right(handle_row, drag_col, end_col ):
+            left_old, _col = self.drag_grid_points[handle_row][drag_col]
+            right_old, _col = self.drag_grid_points[handle_row][end_col]
+            width_old = right_old - left_old
+            return (handle_row, drag_col, end_col, left_old, right_old, width_old)
 
+        def get_old_x_values_to_the_left(handle_row, start_col, drag_col ):
+            left_old, _col = self.drag_grid_points[handle_row][start_col]
+            right_old, _col = self.drag_grid_points[handle_row][drag_col]
+            width_old = right_old - left_old
+            return (handle_row, start_col, drag_col, left_old, right_old, width_old)
 
-            # Determine which axes this handle can move along
-            can_move_x = handle['left'] or handle['right']
-            can_move_y = handle['top'] or handle['bottom']
+        def get_old_y_values_to_the_bottom(handle_col, drag_row, end_row):
+            _row, top_old = self.drag_grid_points[drag_row][handle_col]
+            _row, bottom_old = self.drag_grid_points[end_row][handle_col]
+            height_old = bottom_old - top_old
+            return (handle_col, drag_row, end_row, top_old, bottom_old, height_old)
 
-            # Set delta to 0 if movement is not allowed
-            if not can_move_x:
-                delta_x = 0
-            if not can_move_y:
-                delta_y = 0
+        def get_old_y_values_to_the_top(handle_col, start_row, drag_row):
+            _row, top_old = self.drag_grid_points[start_row][handle_col]
+            _row, bottom_old = self.drag_grid_points[drag_row][handle_col]
+            height_old = bottom_old - top_old
+            return (handle_col, start_row, drag_row, top_old, bottom_old, height_old)
 
-            # Move the dragged handle
-            handle['pos'] = QPoint(old_pos.x() + delta_x, old_pos.y() + delta_y)
+        def preserve_x_spacing_to_the_right(handle_row, drag_col, end_col, left_old, right_old, width_old):
+            left_new, _col = self.drag_grid_points[handle_row][drag_col]
+            width_new = right_old - left_new
+            """Adjust points in the same row to preserve relative X spacing"""
+            for col in range(drag_col+1,end_col):
+                old_x, old_y = self.drag_grid_points[handle_row][col]
+                relative_pos = (old_x - left_old) / width_old
+                new_x = int(left_new + relative_pos * width_new)
+                if handle_row == 0:
+                    print(f"Preserve right: col {col}, row {handle_row}, old_x {old_x}, relative_pos {relative_pos}, new_x {new_x}")
+                self.drag_grid_points[handle_row][col] = (new_x, old_y)
 
-            # Convert the new handle position back to original image coordinates
-            # and update the corresponding point in drag_grid_points
-            handle_row = handle['row']
-            handle_col = handle['col']
+        def preserve_x_spacing_to_the_left(handle_row, start_col, drag_col, left_old, right_old, width_old):
+            right_new, _col = self.drag_grid_points[handle_row][drag_col]
+            width_new = right_new - left_old
+            """Adjust points in the same row to preserve relative Y spacing"""
+            for col in range(start_col+1,drag_col):
+                old_x, old_y = self.drag_grid_points[handle_row][col]
+                relative_pos = (old_x - right_old) / width_old
+                new_x = int(right_new + relative_pos * width_new)
+                self.drag_grid_points[handle_row][col] = (new_x, old_y)
+
+        def preserve_y_spacing_to_the_bottom(handle_col, drag_row, end_row, top_old, bottom_old, height_old):
+            _row, top_new = self.drag_grid_points[drag_row][handle_col]
+            height_new = bottom_old - top_new
+            """Adjust points in the same column to preserve relative Y spacing"""
+            for row in range(drag_row+1,end_row):
+                old_x, old_y = self.drag_grid_points[row][handle_col]
+                relative_pos = (old_y - top_old) / height_old
+                new_y = int(top_new + relative_pos * height_new)
+                self.drag_grid_points[row][handle_col] = (old_x, new_y)
+
+        def preserve_y_spacing_to_the_top(handle_col, start_row, drag_row, top_old, bottom_old, height_old):
+            _row, bottom_new = self.drag_grid_points[drag_row][handle_col]
+            height_new = bottom_new - top_old
+            """Adjust points in the same column to preserve relative Y spacing"""
+            for row in range(start_row+1, drag_row):
+                old_x, old_y = self.drag_grid_points[row][handle_col]
+                relative_pos = (old_y - bottom_old) / height_old
+                new_y = int(bottom_new + relative_pos * height_new)
+                self.drag_grid_points[row][handle_col] = (old_x, new_y)
+
+        def updateHandle(handle, handle_row, handle_col, delta_x, delta_y):
+            handle['pos'] = QPoint(handle['pos'].x() + delta_x, handle['pos'].y() + delta_y)
+            handle['updated'] = True
+
 
             # Convert from display coordinates to original image coordinates
             # Remove padding offset first
@@ -385,66 +445,78 @@ class ImageGridWidget(QLabel):
             original_y = image_y / self.zoom_factor
 
             # Update the grid point in the copy
-            if self.drag_grid_points and 0 <= handle_row < len(self.drag_grid_points) and 0 <= handle_col < len(self.drag_grid_points[handle_row]):
+            if 0 <= handle_row < len(self.drag_grid_points) and 0 <= handle_col < len(self.drag_grid_points[handle_row]):
                 self.drag_grid_points[handle_row][handle_col] = (int(original_x), int(original_y))
+
+        super().mouseMoveEvent(event)
+        if event.buttons() & Qt.LeftButton and self.crop_mode and self.is_dragging and self.dragging_handle and self.drag_grid_points:
+            handle = self.dragging_handle
+
+            print("\nStart drog")
+            # Calculate the movement delta
+            old_pos = self.last_drag_pos
+            #old_pos = handle['pos']
+            self.last_drag_pos = event.pos()
+            delta_x = self.last_drag_pos.x() - old_pos.x()
+            delta_y = self.last_drag_pos.y() - old_pos.y()
+
+            doing_left = handle['left']
+            doing_right = handle['right']
+            doing_top = handle['top']
+            doing_bottom = handle['bottom']
+
+            # Determine which axes this handle can move along
+            can_move_x = doing_left or doing_right
+            can_move_y = doing_top or doing_bottom
+
+            # Set delta to 0 if movement is not allowed
+            if not can_move_x:
+                delta_x = 0
+            if not can_move_y:
+                delta_y = 0
 
             # Move all handles that share edge attributes with the dragged handle
             for other_handle in self.drag_handles:
-                if other_handle is handle:
-                    continue  # Skip the handle being dragged
+                # Convert the new handle position back to original image coordinates
+                # and update the corresponding point in drag_grid_points
+                other_handle_row = other_handle['row']
+                other_handle_col = other_handle['col']
 
                 # If dragged handle is on left edge, move all left edge handles horizontally
-                if handle['left'] and other_handle['left'] and can_move_x:
-                    other_handle['pos'] = QPoint(other_handle['pos'].x() + delta_x, other_handle['pos'].y())
-                    # Update corresponding grid point for this handle too
-                    other_row = other_handle['row']
-                    other_col = other_handle['col']
-                    other_image_x = other_handle['pos'].x() - self.padding
-                    other_original_x = other_image_x / self.zoom_factor
-                    if self.drag_grid_points and 0 <= other_row < len(self.drag_grid_points) and 0 <= other_col < len(self.drag_grid_points[other_row]):
-                        # Keep the y coordinate unchanged, only update x
-                        current_y = self.drag_grid_points[other_row][other_col][1]
-                        self.drag_grid_points[other_row][other_col] = (int(other_original_x), current_y)
+                if doing_left and other_handle['left'] and can_move_x:
+                    old_x_values_left = get_old_x_values_to_the_right(other_handle_row, other_handle_col, self.grid_x_max)
 
                 # If dragged handle is on right edge, move all right edge handles horizontally
-                if handle['right'] and other_handle['right'] and can_move_x:
-                    other_handle['pos'] = QPoint(other_handle['pos'].x() + delta_x, other_handle['pos'].y())
-                    # Update corresponding grid point for this handle too
-                    other_row = other_handle['row']
-                    other_col = other_handle['col']
-                    other_image_x = other_handle['pos'].x() - self.padding
-                    other_original_x = other_image_x / self.zoom_factor
-                    if self.drag_grid_points and 0 <= other_row < len(self.drag_grid_points) and 0 <= other_col < len(self.drag_grid_points[other_row]):
-                        # Keep the y coordinate unchanged, only update x
-                        current_y = self.drag_grid_points[other_row][other_col][1]
-                        self.drag_grid_points[other_row][other_col] = (int(other_original_x), current_y)
+                if doing_right and other_handle['right'] and can_move_x:
+                    old_x_values_right = get_old_x_values_to_the_left(other_handle_row, 0, other_handle_col)
 
                 # If dragged handle is on top edge, move all top edge handles vertically
-                if handle['top'] and other_handle['top'] and can_move_y:
-                    other_handle['pos'] = QPoint(other_handle['pos'].x(), other_handle['pos'].y() + delta_y)
-                    # Update corresponding grid point for this handle too
-                    other_row = other_handle['row']
-                    other_col = other_handle['col']
-                    other_image_y = other_handle['pos'].y() - self.padding
-                    other_original_y = other_image_y / self.zoom_factor
-                    if self.drag_grid_points and 0 <= other_row < len(self.drag_grid_points) and 0 <= other_col < len(self.drag_grid_points[other_row]):
-                        # Keep the x coordinate unchanged, only update y
-                        current_x = self.drag_grid_points[other_row][other_col][0]
-                        self.drag_grid_points[other_row][other_col] = (current_x, int(other_original_y))
+                if doing_top and other_handle['top'] and can_move_y:
+                    old_y_values_top = get_old_y_values_to_the_bottom(other_handle_col, other_handle_row, self.grid_y_max)
 
                 # If dragged handle is on bottom edge, move all bottom edge handles vertically
-                if handle['bottom'] and other_handle['bottom'] and can_move_y:
-                    other_handle['pos'] = QPoint(other_handle['pos'].x(), other_handle['pos'].y() + delta_y)
-                    # Update corresponding grid point for this handle too
-                    other_row = other_handle['row']
-                    other_col = other_handle['col']
-                    other_image_y = other_handle['pos'].y() - self.padding
-                    other_original_y = other_image_y / self.zoom_factor
-                    if self.drag_grid_points and 0 <= other_row < len(self.drag_grid_points) and 0 <= other_col < len(self.drag_grid_points[other_row]):
-                        # Keep the x coordinate unchanged, only update y
-                        current_x = self.drag_grid_points[other_row][other_col][0]
-                        self.drag_grid_points[other_row][other_col] = (current_x, int(other_original_y))
+                if doing_bottom and other_handle['bottom'] and can_move_y:
+                    old_y_values_bottom = get_old_y_values_to_the_top(other_handle_col, 0, other_handle_row)
 
+                updateHandle(other_handle, other_handle_row, other_handle_col, delta_x, delta_y)
+
+                # If dragged handle is on left edge, move all left edge handles horizontally
+                if doing_left and other_handle['left'] and can_move_x:
+                    preserve_x_spacing_to_the_right(*old_x_values_left)
+
+                # If dragged handle is on right edge, move all right edge handles horizontally
+                if doing_right and other_handle['right'] and can_move_x:
+                    preserve_x_spacing_to_the_left(*old_x_values_right)
+
+                # If dragged handle is on top edge, move all top edge handles vertically
+                if doing_top and other_handle['top'] and can_move_y:
+                    preserve_y_spacing_to_the_bottom(*old_y_values_top)
+
+                # If dragged handle is on bottom edge, move all bottom edge handles vertically
+                if doing_bottom and other_handle['bottom'] and can_move_y:
+                    preserve_y_spacing_to_the_top(*old_y_values_bottom)
+
+            self.update_drag_handle_positions()
             self.update()
 
     def mouseReleaseEvent(self, event):
@@ -551,16 +623,17 @@ class ImageGridWidget(QLabel):
             print(f"Loaded top-left corner: {self.grid_points[0][0]}")
             print(f"Loaded bottom-right corner: {self.grid_points[-1][-1]}")
 
-    def get_grid_point(self, row, col):
+    def get_grid_point(self, row, col, grid_points=None):
         """Get the coordinates of a specific grid point in original image dimensions"""
-        if (0 <= row < len(self.grid_points) and
-            0 <= col < len(self.grid_points[0]) if self.grid_points else False):
-            return self.grid_points[row][col]
+        if grid_points is None:
+            grid_points = self.grid_points
+        if (grid_points and 0 <= row < len(grid_points) and 0 <= col < len(grid_points[0])):
+            return grid_points[row][col]
         return None
 
-    def get_scaled_grid_point(self, row, col):
+    def get_scaled_grid_point(self, row, col, grid_points=None):
         """Get the coordinates of a specific grid point scaled to current zoom and with padding offset"""
-        original_point = self.get_grid_point(row, col)
+        original_point = self.get_grid_point(row, col, grid_points)
         if original_point is None:
             return None
 
