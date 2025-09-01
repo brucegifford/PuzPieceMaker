@@ -823,6 +823,14 @@ class PuzzleGridViewer(QMainWindow):
         self.crop_button.setCheckable(True)
         toolbar_layout.addWidget(self.crop_button)
 
+        # Add Drag Endpoints button
+        self.drag_endpoints_mode = False
+        self.drag_endpoints_button = QPushButton("Drag Endpoints")
+        self.drag_endpoints_button.clicked.connect(self.toggle_drag_endpoints_mode)
+        self.drag_endpoints_button.setEnabled(False)
+        self.drag_endpoints_button.setCheckable(True)
+        toolbar_layout.addWidget(self.drag_endpoints_button)
+
         toolbar_layout.addStretch()
         layout.addWidget(toolbar_frame)
 
@@ -1137,6 +1145,7 @@ class PuzzleGridViewer(QMainWindow):
             self.save_as_button.setEnabled(True)
             self.crop_button.setEnabled(True)
             self.enable_zoom_controls(True)
+            self.drag_endpoints_button.setEnabled(True)
 
             # Enable reload button since we have a loaded document
             self.reload_button.setEnabled(True)
