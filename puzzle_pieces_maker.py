@@ -198,6 +198,22 @@ class ImageGridWidget(QLabel):
             self.drag_handles = []
         self.update_display()
 
+    def set_drag_endpoints_mode(self, enabled):
+        """Enable or disable drag endpoints mode"""
+        # For now, this is a placeholder implementation
+        # In the future, this could enable dragging of all grid intersection points
+        # rather than just the perimeter points like crop mode does
+        if enabled:
+            # TODO: Implement drag endpoints functionality
+            # This would create drag handles for ALL grid intersection points,
+            # not just the perimeter ones
+            print("Drag endpoints mode enabled - functionality to be implemented")
+        else:
+            print("Drag endpoints mode disabled")
+
+        # For now, just update the display
+        self.update_display()
+
     def create_drag_handles(self):
         """Create drag handles at all grid perimeter points"""
         self.drag_handles = []
@@ -1198,6 +1214,19 @@ class PuzzleGridViewer(QMainWindow):
             self.crop_mode = False
             self.image_widget.set_crop_mode(False)
             self.crop_button.setText("Crop")
+
+    def toggle_drag_endpoints_mode(self):
+        """Toggle drag endpoints mode on/off"""
+        if self.drag_endpoints_button.isChecked():
+            # Enable drag endpoints mode
+            self.drag_endpoints_mode = True
+            self.image_widget.set_drag_endpoints_mode(True)
+            self.drag_endpoints_button.setText("Exit Drag Endpoints")
+        else:
+            # Disable drag endpoints mode
+            self.drag_endpoints_mode = False
+            self.image_widget.set_drag_endpoints_mode(False)
+            self.drag_endpoints_button.setText("Drag Endpoints")
 
     def ensure_window_on_screen(self, x, y, width, height):
         """Ensure the window position is visible on screen, adjusting if necessary"""
