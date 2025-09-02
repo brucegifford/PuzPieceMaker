@@ -359,6 +359,109 @@ class ImageGridWidget(QLabel):
         print("Top-left rgrid point:", self.drag_grid_points[0][0])  # Debug output
         """
 
+    def get_old_x_values_to_the_right(self, handle_row, drag_col, end_col):
+        left_old, _col = self.drag_grid_points[handle_row][drag_col]
+        right_old, _col = self.drag_grid_points[handle_row][end_col]
+        width_old = right_old - left_old
+        preserve_values = []
+        for col in range(drag_col + 1, end_col):
+            old_x, old_y = self.drag_grid_points[handle_row][col]
+            relative_pos = (old_x - left_old) / width_old
+            preserve_values.append(relative_pos)
+
+        return (handle_row, drag_col, end_col, left_old, right_old, width_old, preserve_values)
+
+    def get_old_x_values_to_the_left(self, handle_row, start_col, drag_col):
+        left_old, _col = self.drag_grid_points[handle_row][start_col]
+        right_old, _col = self.drag_grid_points[handle_row][drag_col]
+        width_old = right_old - left_old
+        preserve_values = []
+        for col in range(start_col + 1, drag_col):
+            old_x, old_y = self.drag_grid_points[handle_row][col]
+            relative_pos = (old_x - right_old) / width_old
+            preserve_values.append(relative_pos)
+        return (handle_row, start_col, drag_col, left_old, right_old, width_old, preserve_values)
+
+    def get_old_y_values_to_the_bottom(self, handle_col, drag_row, end_row):
+        _row, top_old = self.drag_grid_points[drag_row][handle_col]
+        _row, bottom_old = self.drag_grid_points[end_row][handle_col]
+        height_old = bottom_old - top_old
+        preserve_values = []
+        for row in range(drag_row + 1, end_row):
+            old_x, old_y = self.drag_grid_points[row][handle_col]
+            relative_pos = (old_y - top_old) / height_old
+            preserve_values.append(relative_pos)
+        return (handle_col, drag_row, end_row, top_old, bottom_old, height_old, preserve_values)
+
+    def get_old_y_values_to_the_top(self, handle_col, start_row, drag_row):
+        _row, top_old = self.drag_grid_points[start_row][handle_col]
+        _row, bottom_old = self.drag_grid_points[drag_row][handle_col]
+        height_old = bottom_old - top_old
+        preserve_values = []
+        for row in range(start_row + 1, drag_row):
+            old_x, old_y = self.drag_grid_points[row][handle_col]
+            relative_pos = (old_y - bottom_old) / height_old
+            preserve_values.append(relative_pos)
+        return (handle_col, start_row, drag_row, top_old, bottom_old, height_old, preserve_values)
+
+    def preserve_x_spacing_to_the_right(self, handle_row, drag_col, end_col, left_old, right_old, width_old, preserve_values):
+        left_new, _col = self.drag_grid_points[handle_row][drag_col]
+        width_new = right_old - left_new
+        """Adjust points in the same row to preserve relative X spacing"""
+        preserve_index = 0
+        for col in range(drag_col + 1, end_col):
+            old_x, old_y = self.drag_grid_points[handle_row][col]
+            relative_pos = preserve_values[preserve_index]
+            preserve_index += 1
+            new_x = int(left_new + relative_pos * width_new)
+            if handle_row == 0:
+                print(
+                    f"Preserve right: col {col}, row {handle_row}, old_x {old_x}, relative_pos {relative_pos}, new_x {new_x}")
+            self.drag_grid_points[handle_row][col] = (new_x, old_y)
+            # grid_point_counts[handle_row][col] += 1
+
+    def preserve_x_spacing_to_the_left(self, handle_row, start_col, drag_col, left_old, right_old, width_old,
+                                       preserve_values):
+        right_new, _col = self.drag_grid_points[handle_row][drag_col]
+        width_new = right_new - left_old
+        """Adjust points in the same row to preserve relative Y spacing"""
+        preserve_index = 0
+        for col in range(start_col + 1, drag_col):
+            old_x, old_y = self.drag_grid_points[handle_row][col]
+            relative_pos = preserve_values[preserve_index]
+            preserve_index += 1
+            new_x = int(right_new + relative_pos * width_new)
+            self.drag_grid_points[handle_row][col] = (new_x, old_y)
+            # grid_point_counts[handle_row][col] += 1
+
+    def preserve_y_spacing_to_the_bottom(self, handle_col, drag_row, end_row, top_old, bottom_old, height_old,
+                                         preserve_values):
+        _row, top_new = self.drag_grid_points[drag_row][handle_col]
+        height_new = bottom_old - top_new
+        """Adjust points in the same column to preserve relative Y spacing"""
+        preserve_index = 0
+        for row in range(drag_row + 1, end_row):
+            old_x, old_y = self.drag_grid_points[row][handle_col]
+            relative_pos = preserve_values[preserve_index]
+            preserve_index += 1
+            new_y = int(top_new + relative_pos * height_new)
+            self.drag_grid_points[row][handle_col] = (old_x, new_y)
+            # grid_point_counts[row][handle_col] += 1
+
+    def preserve_y_spacing_to_the_top(self, handle_col, start_row, drag_row, top_old, bottom_old, height_old,
+                                      preserve_values):
+        _row, bottom_new = self.drag_grid_points[drag_row][handle_col]
+        height_new = bottom_new - top_old
+        """Adjust points in the same column to preserve relative Y spacing"""
+        preserve_index = 0
+        for row in range(start_row + 1, drag_row):
+            old_x, old_y = self.drag_grid_points[row][handle_col]
+            relative_pos = preserve_values[preserve_index]
+            preserve_index += 1
+            new_y = int(bottom_new + relative_pos * height_new)
+            self.drag_grid_points[row][handle_col] = (old_x, new_y)
+            # grid_point_counts[row][handle_col] += 1
+
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
         if event.button() == Qt.LeftButton and self.crop_mode:
@@ -380,106 +483,6 @@ class ImageGridWidget(QLabel):
                     return
 
     def mouseMoveEvent(self, event):
-
-        def get_old_x_values_to_the_right(handle_row, drag_col, end_col ):
-            left_old, _col = self.drag_grid_points[handle_row][drag_col]
-            right_old, _col = self.drag_grid_points[handle_row][end_col]
-            width_old = right_old - left_old
-            preserve_values = []
-            for col in range(drag_col+1,end_col):
-                old_x, old_y = self.drag_grid_points[handle_row][col]
-                relative_pos = (old_x - left_old) / width_old
-                preserve_values.append(relative_pos)
-
-            return (handle_row, drag_col, end_col, left_old, right_old, width_old, preserve_values)
-
-        def get_old_x_values_to_the_left(handle_row, start_col, drag_col ):
-            left_old, _col = self.drag_grid_points[handle_row][start_col]
-            right_old, _col = self.drag_grid_points[handle_row][drag_col]
-            width_old = right_old - left_old
-            preserve_values = []
-            for col in range(start_col+1,drag_col):
-                old_x, old_y = self.drag_grid_points[handle_row][col]
-                relative_pos = (old_x - right_old) / width_old
-                preserve_values.append(relative_pos)
-            return (handle_row, start_col, drag_col, left_old, right_old, width_old, preserve_values)
-
-        def get_old_y_values_to_the_bottom(handle_col, drag_row, end_row):
-            _row, top_old = self.drag_grid_points[drag_row][handle_col]
-            _row, bottom_old = self.drag_grid_points[end_row][handle_col]
-            height_old = bottom_old - top_old
-            preserve_values = []
-            for row in range(drag_row+1,end_row):
-                old_x, old_y = self.drag_grid_points[row][handle_col]
-                relative_pos = (old_y - top_old) / height_old
-                preserve_values.append(relative_pos)
-            return (handle_col, drag_row, end_row, top_old, bottom_old, height_old, preserve_values)
-
-        def get_old_y_values_to_the_top(handle_col, start_row, drag_row):
-            _row, top_old = self.drag_grid_points[start_row][handle_col]
-            _row, bottom_old = self.drag_grid_points[drag_row][handle_col]
-            height_old = bottom_old - top_old
-            preserve_values = []
-            for row in range(start_row+1, drag_row):
-                old_x, old_y = self.drag_grid_points[row][handle_col]
-                relative_pos = (old_y - bottom_old) / height_old
-                preserve_values.append(relative_pos)
-            return (handle_col, start_row, drag_row, top_old, bottom_old, height_old, preserve_values)
-
-        def preserve_x_spacing_to_the_right(handle_row, drag_col, end_col, left_old, right_old, width_old, preserve_values):
-            left_new, _col = self.drag_grid_points[handle_row][drag_col]
-            width_new = right_old - left_new
-            """Adjust points in the same row to preserve relative X spacing"""
-            preserve_index = 0
-            for col in range(drag_col+1,end_col):
-                old_x, old_y = self.drag_grid_points[handle_row][col]
-                relative_pos = preserve_values[preserve_index]
-                preserve_index += 1
-                new_x = int(left_new + relative_pos * width_new)
-                if handle_row == 0:
-                    print(f"Preserve right: col {col}, row {handle_row}, old_x {old_x}, relative_pos {relative_pos}, new_x {new_x}")
-                self.drag_grid_points[handle_row][col] = (new_x, old_y)
-                #grid_point_counts[handle_row][col] += 1
-
-        def preserve_x_spacing_to_the_left(handle_row, start_col, drag_col, left_old, right_old, width_old, preserve_values):
-            right_new, _col = self.drag_grid_points[handle_row][drag_col]
-            width_new = right_new - left_old
-            """Adjust points in the same row to preserve relative Y spacing"""
-            preserve_index = 0
-            for col in range(start_col+1,drag_col):
-                old_x, old_y = self.drag_grid_points[handle_row][col]
-                relative_pos = preserve_values[preserve_index]
-                preserve_index += 1
-                new_x = int(right_new + relative_pos * width_new)
-                self.drag_grid_points[handle_row][col] = (new_x, old_y)
-                #grid_point_counts[handle_row][col] += 1
-
-        def preserve_y_spacing_to_the_bottom(handle_col, drag_row, end_row, top_old, bottom_old, height_old, preserve_values):
-            _row, top_new = self.drag_grid_points[drag_row][handle_col]
-            height_new = bottom_old - top_new
-            """Adjust points in the same column to preserve relative Y spacing"""
-            preserve_index = 0
-            for row in range(drag_row+1,end_row):
-                old_x, old_y = self.drag_grid_points[row][handle_col]
-                relative_pos = preserve_values[preserve_index]
-                preserve_index += 1
-                new_y = int(top_new + relative_pos * height_new)
-                self.drag_grid_points[row][handle_col] = (old_x, new_y)
-                #grid_point_counts[row][handle_col] += 1
-
-        def preserve_y_spacing_to_the_top(handle_col, start_row, drag_row, top_old, bottom_old, height_old, preserve_values):
-            _row, bottom_new = self.drag_grid_points[drag_row][handle_col]
-            height_new = bottom_new - top_old
-            """Adjust points in the same column to preserve relative Y spacing"""
-            preserve_index = 0
-            for row in range(start_row+1, drag_row):
-                old_x, old_y = self.drag_grid_points[row][handle_col]
-                relative_pos = preserve_values[preserve_index]
-                preserve_index += 1
-                new_y = int(bottom_new + relative_pos * height_new)
-                self.drag_grid_points[row][handle_col] = (old_x, new_y)
-                #grid_point_counts[row][handle_col] += 1
-
         super().mouseMoveEvent(event)
         if event.buttons() & Qt.LeftButton and self.crop_mode and self.is_dragging and self.dragging_handle and self.drag_grid_points:
             handle = self.dragging_handle
@@ -536,7 +539,7 @@ class ImageGridWidget(QLabel):
                         #key = f"left_{other_handle_row}"
                         key = (other_handle_row, other_handle_col, self.grid_x_max)
                         if key not in self.drag_preserve_values['left']:
-                            self.drag_preserve_values['left'][key] = get_old_x_values_to_the_right(*key)
+                            self.drag_preserve_values['left'][key] = self.get_old_x_values_to_the_right(*key)
                         else:
                             print("Already have old values for", key)
 
@@ -544,7 +547,7 @@ class ImageGridWidget(QLabel):
                         #key = f"right_{other_handle_row}"
                         key = (other_handle_row, 0, other_handle_col)
                         if key not in self.drag_preserve_values['right']:
-                            self.drag_preserve_values['right'][key] = get_old_x_values_to_the_left(*key)
+                            self.drag_preserve_values['right'][key] = self.get_old_x_values_to_the_left(*key)
                         else:
                             print("Already have old values for", key)
 
@@ -552,7 +555,7 @@ class ImageGridWidget(QLabel):
                         #key = f"top_{other_handle_col}"
                         key = (other_handle_col, other_handle_row, self.grid_y_max)
                         if key not in self.drag_preserve_values['top']:
-                            self.drag_preserve_values['top'][key] = get_old_y_values_to_the_bottom(*key)
+                            self.drag_preserve_values['top'][key] = self.get_old_y_values_to_the_bottom(*key)
                         else:
                             print("Already have old values for", key)
 
@@ -560,7 +563,7 @@ class ImageGridWidget(QLabel):
                         #key = f"bottom_{other_handle_col}"
                         key = (other_handle_col, 0, other_handle_row)
                         if key not in self.drag_preserve_values['bottom']:
-                            self.drag_preserve_values['bottom'][key] = get_old_y_values_to_the_top(*key)
+                            self.drag_preserve_values['bottom'][key] = self.get_old_y_values_to_the_top(*key)
                         else:
                             print("Already have old values for", key)
             else:
@@ -595,13 +598,13 @@ class ImageGridWidget(QLabel):
 
             # Preserve spacing after all handles have been moved
             for key, values in self.drag_preserve_values['left'].items():
-                preserve_x_spacing_to_the_right(*values)
+                self.preserve_x_spacing_to_the_right(*values)
             for key, values in self.drag_preserve_values['right'].items():
-                preserve_x_spacing_to_the_left(*values)
+                self.preserve_x_spacing_to_the_left(*values)
             for key, values in self.drag_preserve_values['top'].items():
-                preserve_y_spacing_to_the_bottom(*values)
+                self.preserve_y_spacing_to_the_bottom(*values)
             for key, values in self.drag_preserve_values['bottom'].items():
-                preserve_y_spacing_to_the_top(*values)
+                self.preserve_y_spacing_to_the_top(*values)
 
             for row in range(self.grid_y_max + 1):  # +1 because we need lines at both edges
                 for col in range(self.grid_x_max + 1):
